@@ -4,6 +4,7 @@ use warp::{
     Reply,
 };
 
+use argon2::Error as ArgonError;
 use reqwest::Error as ReqwestError;
 use reqwest_middleware::Error as MiddlewareReqwestError;
 
@@ -11,20 +12,27 @@ use reqwest_middleware::Error as MiddlewareReqwestError;
 pub enum Error {
     ParseError(std::num::ParseIntError),
     MissingParameters,
-    DatabaseQueryError,
+    WrongPassword, // ハッシュ化されたパスワードと平文のverifyの結果、一致していなかったとき
+    CannotDecryptToken,
+    Unauthorized,
+    ArgonLibraryError(ArgonError), // argonでverifyに失敗したとき
+    DatabaseQueryError(sqlx::Error),
     ReqwestAPIError(ReqwestError),
     MiddlewareReqwestAPIError(MiddlewareReqwestError),
     ClientError(APILayerError),
     ServerError(APILayerError),
 }
 
-// to_string()を呼び出すのに必要
 impl std::fmt::Display for Error {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         match &*self {
             Error::ParseError(ref err) => write!(f, "Cannot parse parameter: {}", err),
             Error::MissingParameters => write!(f, "Missing parameter"),
-            Error::DatabaseQueryError => write!(f, "Cannot update, invalid data"),
+            Error::WrongPassword => write!(f, "Wrong password"),
+            Error::CannotDecryptToken => write!(f, "Cannot decrypt error"),
+            Error::Unauthorized => write!(f, "No permission to change the underlying resource"),
+            Error::ArgonLibraryError(_) => write!(f, "Cannot verifiy password"),
+            Error::DatabaseQueryError(_) => write!(f, "Cannot update, invalid data"),
             Error::ReqwestAPIError(err) => write!(f, "External API error: {}", err),
             Error::MiddlewareReqwestAPIError(err) => write!(f, "External API error: {}", err),
             Error::ClientError(err) => write!(f, "External Client error: {}", err),
@@ -52,17 +60,44 @@ impl Reject for APILayerError {}
 // エラーハンドリング関数
 pub async fn return_error(r: Rejection) -> Result<impl Reply, Rejection> {
     // corsエラーの場合、この関数に入っていない
-    if let Some(crate::Error::DatabaseQueryError) = r.find() {
+    if let Some(crate::Error::DatabaseQueryError(e)) = r.find() {
         event!(Level::ERROR, "Database query error");
-        Ok(warp::reply::with_status(
-            crate::Error::DatabaseQueryError.to_string(),
-            StatusCode::UNPROCESSABLE_ENTITY,
-        ))
+        match e {
+            sqlx::Error::Database(err) => {
+                if err.code().unwrap().parse::<i32>().unwrap() == 23505 {
+                    Ok(warp::reply::with_status(
+                        "Account already exsists".to_string(),
+                        StatusCode::UNPROCESSABLE_ENTITY,
+                    ))
+                } else {
+                    Ok(warp::reply::with_status(
+                        "Cannot update data".to_string(),
+                        StatusCode::UNPROCESSABLE_ENTITY,
+                    ))
+                }
+            }
+            _ => Ok(warp::reply::with_status(
+                "Cannot update data".to_string(),
+                StatusCode::UNPROCESSABLE_ENTITY,
+            )),
+        }
     } else if let Some(crate::Error::ReqwestAPIError(e)) = r.find() {
         event!(Level::ERROR, "{}", e);
         Ok(warp::reply::with_status(
             "Internal Server Error".to_string(),
             StatusCode::INTERNAL_SERVER_ERROR,
+        ))
+    } else if let Some(crate::Error::Unauthorized) = r.find() {
+        event!(Level::ERROR, "Not matching account id");
+        Ok(warp::reply::with_status(
+            "No permission to change underlying resource".to_string(),
+            StatusCode::UNAUTHORIZED,
+        ))
+    } else if let Some(crate::Error::WrongPassword) = r.find() {
+        event!(Level::ERROR, "Entered wrong password");
+        Ok(warp::reply::with_status(
+            "Wrong E-Mail/Password combination".to_string(),
+            StatusCode::UNAUTHORIZED,
         ))
     } else if let Some(crate::Error::MiddlewareReqwestAPIError(e)) = r.find() {
         event!(Level::ERROR, "{}", e);

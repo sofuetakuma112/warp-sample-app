@@ -1,8 +1,6 @@
 #![warn(clippy::all)]
 
 use handle_errors::return_error;
-use routes::answer::add_answer;
-use routes::question::{add_question, delete_question, get_questions, update_question};
 use store::Store;
 use tracing_subscriber::fmt::format::FmtSpan;
 use warp::hyper::Method;
@@ -52,7 +50,7 @@ async fn main() {
         .and(warp::path::end())
         .and(warp::query())
         .and(store_filter.clone())
-        .and_then(get_questions)
+        .and_then(routes::question::get_questions)
         // カスタムイベントのロギングを設定する
         // カスタムイベントや各受信リクエストのログを取ることができる
         .with(warp::trace(|info| {
@@ -65,42 +63,62 @@ async fn main() {
             )
         }));
 
-    let add_question = warp::post()
-        .and(warp::path("questions"))
-        .and(warp::path::end())
-        .and(store_filter.clone())
-        .and(warp::body::json()) // ルートハンドラの引数の型情報からjson<T>の型パラメータを決定する
-        .and_then(add_question);
-
     let update_question = warp::put()
         .and(warp::path("questions"))
         .and(warp::path::param::<i32>()) // パスパラメータ
         .and(warp::path::end())
+        .and(routes::authentication::auth())
         .and(store_filter.clone())
-        .and(warp::body::json()) // application/json
-        .and_then(update_question);
+        .and(warp::body::json()) // ルートハンドラの引数の型情報からjson<T>の型パラメータを決定する
+        .and_then(routes::question::update_question);
 
     let delete_question = warp::delete()
         .and(warp::path("questions"))
         .and(warp::path::param::<i32>())
         .and(warp::path::end())
+        .and(routes::authentication::auth())
         .and(store_filter.clone())
-        .and_then(delete_question);
+        .and_then(routes::question::delete_question);
+
+    let add_question = warp::post()
+        .and(warp::path("questions"))
+        .and(warp::path::end())
+        .and(routes::authentication::auth())
+        .and(store_filter.clone())
+        .and(warp::body::json()) // application/json
+        .and_then(routes::question::add_question);
 
     let add_answer = warp::post()
         .and(warp::path("answers"))
         .and(warp::path::end())
+        .and(routes::authentication::auth())
         .and(store_filter.clone())
         .and(warp::body::form()) // application/x-www-form-urlencoded
-        .and_then(add_answer);
+        .and_then(routes::answer::add_answer);
+
+    let registration = warp::post()
+        .and(warp::path("registration"))
+        .and(warp::path::end())
+        .and(store_filter.clone())
+        .and(warp::body::json())
+        .and_then(routes::authentication::register);
+
+    let login = warp::post()
+        .and(warp::path("login"))
+        .and(warp::path::end())
+        .and(store_filter.clone())
+        .and(warp::body::json())
+        .and_then(routes::authentication::login);
 
     let routes = get_questions
         .or(update_question)
         .or(add_question)
-        .or(add_answer)
         .or(delete_question)
+        .or(add_answer)
+        .or(registration)
+        .or(login)
         .with(cors)
-        .with(warp::trace::request()) // 受信リクエストのロギングを設定する
+        .with(warp::trace::request())
         .recover(return_error);
 
     warp::serve(routes) // warpのserveメソッドにroutesフィルタを渡して、サーバを起動します。

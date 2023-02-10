@@ -1,32 +1,29 @@
-use std::collections::HashMap;
-
 use warp::hyper::StatusCode;
 
 use crate::{
     profanity::check_profanity,
     store::Store,
-    types::{
-        answer::{Answer, AnswerId, NewAnswer},
-        question::QuestionId,
-    },
+    types::{account::Session, answer::NewAnswer},
 };
 
 // POST /answers
 pub async fn add_answer(
+    session: Session,
     store: Store,
-    params: HashMap<String, String>,
+    new_answer: NewAnswer,
 ) -> Result<impl warp::Reply, warp::Rejection> {
-    let content = match check_profanity(params.get("content").unwrap().to_string()).await {
+    let account_id = session.account_id;
+    let content = match check_profanity(new_answer.content).await {
         Ok(res) => res,
         Err(e) => return Err(warp::reject::custom(e)),
     };
 
     let answer = NewAnswer {
         content,
-        question_id: QuestionId(params.get("questionId").unwrap().parse().unwrap()),
+        question_id: new_answer.question_id,
     };
 
-    match store.add_answer(answer).await {
+    match store.add_answer(answer, account_id).await {
         Ok(_) => Ok(warp::reply::with_status("Answer added", StatusCode::OK)),
         Err(e) => Err(warp::reject::custom(e)),
     }

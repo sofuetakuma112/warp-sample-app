@@ -1,7 +1,0 @@
-    Finished dev [unoptimized + debuginfo] target(s) in 0.06s
-     Running `target/debug/warp-app`
-[2023-02-08T23:19:08Z ERROR warp_app] This is an error!
-[2023-02-08T23:19:08Z INFO  warp_app] This is an info!
-[2023-02-08T23:19:08Z WARN  warp_app] This is a warning!
-[2023-02-08T23:19:08Z INFO  warp::server] Server::run; addr=127.0.0.1:3030
-[2023-02-08T23:19:08Z INFO  warp::server] listening on http://127.0.0.1:3030

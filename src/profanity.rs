@@ -35,7 +35,7 @@ pub async fn check_profanity(content: String) -> Result<String, handle_errors::E
     //　ここでのエラーはMiddlewareReqwestAPIErrorとして扱う
     let res = client
         .post("https://api.apilayer.com/bad_words?censor_character=*")
-        .header("apikey", "API_KEY")
+        .header("apikey", "hoge")
         .body(content)
         .send()
         .await
