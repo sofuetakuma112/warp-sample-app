@@ -13,8 +13,8 @@ pub enum Error {
     ParseError(std::num::ParseIntError),
     MissingParameters,
     WrongPassword, // ハッシュ化されたパスワードと平文のverifyの結果、一致していなかったとき
-    CannotDecryptToken,
-    Unauthorized,
+    CannotDecryptToken, // 暗号化されたトークンを平文に復号するのに失敗、復号したJSONトークンをSession構造体に変換するのに失敗したとき
+    Unauthorized, // 変更を加えようとしているレコードのaccount_idとトークンに記載されたaccount_idが一致しなかったとき
     ArgonLibraryError(ArgonError), // argonでverifyに失敗したとき
     DatabaseQueryError(sqlx::Error),
     ReqwestAPIError(ReqwestError),
